@@ -7,6 +7,7 @@ import * as yup from "yup";
 
 const Input = styled.input`
   padding: 0.75rem 1rem;
+  width: 90%;
 `;
 
 const handleColorType = (color) => {
@@ -35,30 +36,21 @@ const Button = styled.button`
   }
 `;
 
-type Inputs = {
-  pageUrl: string;
-};
-
 const Schema = yup
   .object({
     pageUrl: yup.string().url().required(),
   })
   .required();
 
-const Form = () => {
+type FormProps = {
+  onSubmit: SubmitHandler<any>;
+};
+const Form = ({ onSubmit }: FormProps) => {
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<Inputs>({ resolver: yupResolver(Schema) });
-  const onSubmit: SubmitHandler<Inputs> = async (data) => {
-    try {
-      const response = await axios.post("/.netlify/functions/hello", data);
-      console.log(response);
-    } catch (error) {
-      console.log(error);
-    }
-  };
+  } = useForm({ resolver: yupResolver(Schema) });
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>

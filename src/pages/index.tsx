@@ -63,6 +63,7 @@ const IndexPage = ({ location }) => {
 
   useEffect(() => {
     if (paramUrl) {
+      //TODO(Emil): Make it so it doesn't call recipe second time if not needed
       getRecipe(paramUrl).then((data) => {
         setRecipe(data);
       });

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"unicode"
@@ -13,15 +14,19 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
+	f "github.com/fauna/faunadb-go/v4/faunadb"
+	"github.com/joho/godotenv"
 )
 
 type body struct {
 	PageUrl string `json:"pageUrl"`
 }
 
-type ResponseData struct {
+type Recipe struct {
 	Ingredients []string `json:"ingredients"`
 	Title       string   `json:"title"`
+	Url         string   `json:"url"`
+	Cached      bool     `json:"cached"`
 }
 
 func ErrorEvent(status int, message string) *events.APIGatewayProxyResponse {
@@ -92,6 +97,9 @@ func handler(request events.APIGatewayProxyRequest) (*events.APIGatewayProxyResp
 			fmt.Println("stacktrace from panic: \n" + string(debug.Stack()))
 		}
 	}()
+
+	godotenv.Load(".env")
+
 	var b body
 	err := json.Unmarshal([]byte(request.Body), &b)
 	if err != nil {
@@ -100,29 +108,57 @@ func handler(request events.APIGatewayProxyRequest) (*events.APIGatewayProxyResp
 
 	switch request.HTTPMethod {
 	case "POST":
-		var response ResponseData
+		client := f.NewFaunaClient(
+			os.Getenv("FAUNA_SECRET"),
+			f.Endpoint("https://db.eu.fauna.com"),
+		)
 
-		res, err := http.Get(b.PageUrl)
+		var response Recipe
 
-		if err != nil {
-			return ErrorEvent(400, "Unable to get page"), nil
+		recipeFromDB, dbErr := client.Query(f.Get(f.MatchTerm(f.Index("recipes_search_by_url"), b.PageUrl)))
+		if dbErr != nil {
+			// The recipe is not in the db, so fetch from scratch
+			fmt.Println("Not found in db")
+
+			res, err := http.Get(b.PageUrl)
+
+			if err != nil {
+				return ErrorEvent(400, "Unable to get page"), nil
+			}
+			defer res.Body.Close()
+
+			doc, err := goquery.NewDocumentFromReader(res.Body)
+			if err != nil {
+				return ErrorEvent(400, "Unable to create document"), nil
+			}
+
+			response.Title = getTitle(doc)
+			response.Ingredients = getIngredients(doc)
+			response.Url = b.PageUrl
+
+			_, err = client.Query(f.Create(f.Collection("recipes"), f.Obj{
+				"data": response,
+			}))
+			if err != nil {
+				fmt.Println(err)
+				return ErrorEvent(400, "Unable to add to database"), nil
+			}
+		} else {
+			// Recipe found in db
+			if err := recipeFromDB.At(f.ObjKey("data")).Get(&response); err != nil {
+				return ErrorEvent(400, "Unable to marshal data into struct"), nil
+			}
+			response.Cached = true
 		}
-		defer res.Body.Close()
-
-		doc, err := goquery.NewDocumentFromReader(res.Body)
-		if err != nil {
-			return ErrorEvent(400, "Unable to create document"), nil
-		}
-
-		response.Title = getTitle(doc)
-		response.Ingredients = getIngredients(doc)
 
 		resp, err := json.Marshal(response)
 		if err != nil {
 			return ErrorEvent(400, "Unable to marshal response"), nil
+
 		}
 
 		return JsonEvent(200, string(resp)), nil
+
 	default:
 		return ErrorEvent(404, "Incorrect method"), nil
 	}

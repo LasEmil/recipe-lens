@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { SubmitHandler } from "react-hook-form";
 import styled from "styled-components";
 import Form from "../components/form";
 import axios from "axios";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.min.css";
+import { navigate } from "gatsby-link";
 
 const Page = styled.main`
   color: #232129;
@@ -33,26 +34,40 @@ type Recipe = {
   ingredients?: string[];
   title?: string;
 };
-const IndexPage = () => {
+
+const getRecipe = async (url: string) => {
+  try {
+    const { data, status, ...response } = await axios.post(
+      "/.netlify/functions/recipe",
+      { pageUrl: url }
+    );
+    if (status !== 200) {
+      throw new Error("Unable to get recipe");
+    }
+    return data;
+  } catch (error) {
+    toast.error(error.response.data);
+  }
+};
+const IndexPage = ({ location }) => {
   const [recipe, setRecipe] = useState<Recipe>({});
+  const params = new URLSearchParams(location.search);
+  const paramUrl = decodeURIComponent(params.get("url"));
+  console.log(paramUrl);
 
   const onFormSubmit: SubmitHandler<Inputs> = async (formData) => {
-    try {
-      const { data, status, ...response } = await axios.post(
-        "/.netlify/functions/recipe",
-        formData
-      );
-      if (status !== 200) {
-        throw new Error("Unable to get recipe");
-      }
-
-      setRecipe(data);
-      console.log(status, data, response);
-    } catch (error) {
-      toast.error(error.response.data);
-      console.log(error);
-    }
+    const recipe = await getRecipe(formData.pageUrl);
+    setRecipe(recipe);
+    navigate(`/?url=${encodeURIComponent(formData.pageUrl)}`);
   };
+
+  useEffect(() => {
+    if (paramUrl) {
+      getRecipe(paramUrl).then((data) => {
+        setRecipe(data);
+      });
+    }
+  }, [location.search]);
   return (
     <Page>
       <title>Home Page</title>
@@ -66,10 +81,10 @@ const IndexPage = () => {
             🌮🥗🍛
           </span>
         </Heading>
-        <Form onSubmit={onFormSubmit} />
+        <Form onSubmit={onFormSubmit} initialValues={{ pageUrl: paramUrl }} />
       </div>
       <Recipe>
-        {recipe.title ? <Heading>{recipe.title}</Heading> : null}
+        {recipe?.title ? <Heading>{recipe.title}</Heading> : null}
         {recipe?.ingredients?.length > 0 ? (
           <ul>
             {recipe?.ingredients?.map((ingridient) => (

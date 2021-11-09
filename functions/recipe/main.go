@@ -39,8 +39,20 @@ func JsonEvent(status int, json string) *events.APIGatewayProxyResponse {
 	}
 }
 
+func removeDuplicateStr(strSlice []string) []string {
+	allKeys := make(map[string]bool)
+	list := []string{}
+	for _, item := range strSlice {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
 func getTitle(document *goquery.Document) string {
-	dividersRegexp := regexp.MustCompile(`-|\|`)
+	dividersRegexp := regexp.MustCompile(`-|\||by`)
 	title := strings.TrimSpace(dividersRegexp.Split(document.Find("head title").Text(), -1)[0])
 	return title
 }
@@ -71,7 +83,7 @@ func getIngredients(document *goquery.Document) []string {
 		}
 	})
 
-	return ingredients
+	return removeDuplicateStr(ingredients)
 }
 
 func handler(request events.APIGatewayProxyRequest) (*events.APIGatewayProxyResponse, error) {

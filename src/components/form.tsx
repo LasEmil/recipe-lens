@@ -44,13 +44,14 @@ const Schema = yup
 
 type FormProps = {
   onSubmit: SubmitHandler<any>;
+  initialValues: Record<string, any>;
 };
-const Form = ({ onSubmit }: FormProps) => {
+const Form = ({ onSubmit, initialValues }: FormProps) => {
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm({ resolver: yupResolver(Schema) });
+  } = useForm({ resolver: yupResolver(Schema), defaultValues: initialValues });
 
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
